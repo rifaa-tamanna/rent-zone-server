@@ -1,17 +1,28 @@
 import express from "express";
+import { ObjectId } from "mongodb";
 
 import { verifyToken, verifyOwner } from "../middleware/auth.js";
 
 const router = express.Router();
 
+const allowedRentalTypes = ["daily", "weekly", "monthly"];
+
+const isValidImageUrl = (url) => {
+  try {
+    const parsedUrl = new URL(url);
+    return ["http:", "https:"].includes(parsedUrl.protocol);
+  } catch {
+    return false;
+  }
+};
+
 export default function ownerEquipmentRoutes({
   equipmentCollection,
   usersCollection,
 }) {
-  // GET: Logged-in owner's equipment
+  // GET: Get all equipment added by logged-in owner
   router.get("/", verifyToken, verifyOwner, async (req, res, next) => {
     try {
-      // Get only the equipment of the logged-in owner
       const equipment = await equipmentCollection
         .find({ ownerId: req.user.id })
         .sort({ createdAt: -1 })
@@ -19,7 +30,7 @@ export default function ownerEquipmentRoutes({
 
       return res.status(200).json({
         success: true,
-        message: "Owner equipment fetched successfully.",
+        message: "Equipment fetched successfully.",
         equipment,
       });
     } catch (error) {
@@ -27,25 +38,35 @@ export default function ownerEquipmentRoutes({
     }
   });
 
-  router.post("/", verifyToken, verifyOwner, async (req, res, next) => {
+  // PUT: Update owner's equipment
+  router.put("/:id", verifyToken, verifyOwner, async (req, res, next) => {
     try {
+      const { id } = req.params;
+
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid equipment ID.",
+        });
+      }
+
       const {
         name,
         description,
         category,
         location,
-        rentalPrice,
         rentalTypes,
+        rentalPrice,
         availableQuantity,
         condition,
         brand,
         model,
         image,
-        images = [],
+        images,
         rentalTerms,
       } = req.body;
 
-      // 1. Validate required information
+      // Validate required fields
       if (
         !name?.trim() ||
         !description?.trim() ||
@@ -61,49 +82,33 @@ export default function ownerEquipmentRoutes({
         });
       }
 
-      // 2. Validate rental types
-      const allowedTypes = ["daily", "weekly", "monthly"];
-
+      // Validate rental types
       if (
         !Array.isArray(rentalTypes) ||
         rentalTypes.length === 0 ||
-        !rentalTypes.every((type) => allowedTypes.includes(type)) ||
+        !rentalTypes.every((type) => allowedRentalTypes.includes(type)) ||
         new Set(rentalTypes).size !== rentalTypes.length
       ) {
         return res.status(400).json({
           success: false,
-          message: "Please select a valid rental type.",
+          message: "Please select valid rental types.",
         });
       }
 
-      // 3. Validate rental prices
-      if (!rentalPrice || typeof rentalPrice !== "object") {
+      // Validate rental prices
+      const validPrices = rentalTypes.every((type) => {
+        const price = Number(rentalPrice?.[type]);
+        return Number.isFinite(price) && price > 0;
+      });
+
+      if (!validPrices) {
         return res.status(400).json({
           success: false,
-          message: "Please provide rental prices.",
+          message: "Please provide valid rental prices.",
         });
       }
 
-      const validatedPrices = {};
-
-      for (const type of allowedTypes) {
-        if (rentalTypes.includes(type)) {
-          const price = Number(rentalPrice[type]);
-
-          if (!Number.isFinite(price) || price <= 0) {
-            return res.status(400).json({
-              success: false,
-              message: `Please provide a valid ${type} rental price.`,
-            });
-          }
-
-          validatedPrices[type] = price;
-        } else {
-          validatedPrices[type] = null;
-        }
-      }
-
-      // 4. Validate quantity
+      // Validate available quantity
       const quantity = Number(availableQuantity);
 
       if (!Number.isInteger(quantity) || quantity < 1) {
@@ -113,106 +118,265 @@ export default function ownerEquipmentRoutes({
         });
       }
 
-      // 5. Validate image URLs
-      const imageList = [
-        ...(Array.isArray(images) ? images : []),
-        ...(image ? [image] : []),
+      // Prepare image list
+      const equipmentImages = Array.isArray(images) ? images : [];
+
+      const allImages = [
+        ...new Set([image, ...equipmentImages].filter(Boolean)),
       ];
 
-      const uniqueImages = [
-        ...new Set(
-          imageList
-            .filter((url) => typeof url === "string")
-            .map((url) => url.trim())
-            .filter(Boolean),
-        ),
-      ];
-
-      if (uniqueImages.length === 0) {
+      if (
+        allImages.length === 0 ||
+        allImages.length > 5 ||
+        !allImages.every(isValidImageUrl)
+      ) {
         return res.status(400).json({
           success: false,
-          message: "Please provide at least one equipment image.",
+          message: "Please provide 1 to 5 valid image URLs.",
         });
       }
 
-      const isValidImageUrl = (url) => {
-        try {
-          const parsedUrl = new URL(url);
-          return ["http:", "https:"].includes(parsedUrl.protocol);
-        } catch {
-          return false;
-        }
+      // Prepare rental prices
+      const updatedRentalPrice = {
+        daily: rentalTypes.includes("daily") ? Number(rentalPrice.daily) : null,
+        weekly: rentalTypes.includes("weekly")
+          ? Number(rentalPrice.weekly)
+          : null,
+        monthly: rentalTypes.includes("monthly")
+          ? Number(rentalPrice.monthly)
+          : null,
       };
 
-      if (!uniqueImages.every(isValidImageUrl)) {
-        return res.status(400).json({
+      // Update equipment only if it belongs to logged-in owner
+      const result = await equipmentCollection.updateOne(
+        {
+          _id: new ObjectId(id),
+          ownerId: req.user.id,
+        },
+        {
+          $set: {
+            name: name.trim(),
+            description: description.trim(),
+            category: category.trim(),
+            location: location.trim(),
+            rentalTypes,
+            rentalPrice: updatedRentalPrice,
+            availableQuantity: quantity,
+            condition: condition.trim(),
+            brand: brand.trim(),
+            model: model.trim(),
+            image: allImages[0],
+            images: allImages,
+            rentalTerms: Array.isArray(rentalTerms) ? rentalTerms : [],
+            status: "pending",
+            updatedAt: new Date(),
+          },
+        },
+      );
+
+      if (result.matchedCount === 0) {
+        return res.status(404).json({
           success: false,
-          message: "Please provide valid equipment image URLs.",
+          message:
+            "Equipment not found or you are not authorized to update it.",
         });
       }
 
-      // 6. Get logged-in owner
+      const updatedEquipment = await equipmentCollection.findOne({
+        _id: new ObjectId(id),
+        ownerId: req.user.id,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Equipment updated successfully.",
+        equipment: updatedEquipment,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // DELETE: Remove owner's equipment
+  router.delete("/:id", verifyToken, verifyOwner, async (req, res, next) => {
+    try {
+      const { id } = req.params;
+
+      // Validate equipment ID
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid equipment ID.",
+        });
+      }
+
+      // Delete only the logged-in owner's equipment
+      const result = await equipmentCollection.deleteOne({
+        _id: new ObjectId(id),
+        ownerId: req.user.id,
+      });
+
+      if (result.deletedCount === 0) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Equipment not found or you are not authorized to delete it.",
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Equipment deleted successfully.",
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // POST: Add new equipment
+  router.post("/", verifyToken, verifyOwner, async (req, res, next) => {
+    try {
+      const {
+        name,
+        description,
+        category,
+        location,
+        rentalTypes,
+        rentalPrice,
+        availableQuantity,
+        condition,
+        brand,
+        model,
+        image,
+        images,
+        rentalTerms,
+      } = req.body;
+
+      // Validate required fields
+      if (
+        !name?.trim() ||
+        !description?.trim() ||
+        !category?.trim() ||
+        !location?.trim() ||
+        !condition?.trim() ||
+        !brand?.trim() ||
+        !model?.trim()
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Please provide all required equipment information.",
+        });
+      }
+
+      // Validate rental types
+      if (
+        !Array.isArray(rentalTypes) ||
+        rentalTypes.length === 0 ||
+        !rentalTypes.every((type) => allowedRentalTypes.includes(type)) ||
+        new Set(rentalTypes).size !== rentalTypes.length
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Please select valid rental types.",
+        });
+      }
+
+      // Validate rental prices
+      const validPrices = rentalTypes.every((type) => {
+        const price = Number(rentalPrice?.[type]);
+        return Number.isFinite(price) && price > 0;
+      });
+
+      if (!validPrices) {
+        return res.status(400).json({
+          success: false,
+          message: "Please provide valid rental prices.",
+        });
+      }
+
+      // Validate available quantity
+      const quantity = Number(availableQuantity);
+
+      if (!Number.isInteger(quantity) || quantity < 1) {
+        return res.status(400).json({
+          success: false,
+          message: "Available quantity must be at least 1.",
+        });
+      }
+
+      // Prepare image list
+      const equipmentImages = Array.isArray(images) ? images : [];
+
+      const allImages = [
+        ...new Set([image, ...equipmentImages].filter(Boolean)),
+      ];
+
+      if (
+        allImages.length === 0 ||
+        allImages.length > 5 ||
+        !allImages.every(isValidImageUrl)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Please provide 1 to 5 valid image URLs.",
+        });
+      }
+
+      // Find logged-in owner
       const owner = await usersCollection.findOne({
         email: req.user.email,
       });
 
-      if (!owner || owner.role !== "owner") {
-        return res.status(403).json({
+      if (!owner) {
+        return res.status(404).json({
           success: false,
-          message: "Only registered equipment owners can add equipment.",
+          message: "Owner information not found.",
         });
       }
 
-      // 7. Prepare rental terms
-      const terms = Array.isArray(rentalTerms)
-        ? rentalTerms
-        : String(rentalTerms || "").split("\n");
+      // Prepare rental prices
+      const newRentalPrice = {
+        daily: rentalTypes.includes("daily") ? Number(rentalPrice.daily) : null,
+        weekly: rentalTypes.includes("weekly")
+          ? Number(rentalPrice.weekly)
+          : null,
+        monthly: rentalTypes.includes("monthly")
+          ? Number(rentalPrice.monthly)
+          : null,
+      };
 
-      // 8. Prepare equipment document
-      const equipment = {
+      // Prepare equipment document
+      const newEquipment = {
         name: name.trim(),
         description: description.trim(),
         category: category.trim(),
         location: location.trim(),
-
-        rentalPrice: validatedPrices,
         rentalTypes,
-
+        rentalPrice: newRentalPrice,
         availableQuantity: quantity,
         condition: condition.trim(),
         brand: brand.trim(),
         model: model.trim(),
-
-        // First image remains the primary image.
-        image: uniqueImages[0],
-        images: uniqueImages,
-
-        rentalTerms: terms.map((term) => String(term).trim()).filter(Boolean),
-
+        image: allImages[0],
+        images: allImages,
+        rentalTerms: Array.isArray(rentalTerms) ? rentalTerms : [],
         ownerId: req.user.id,
-
-        owner: {
-          id: req.user.id,
-          name: owner.name,
-          email: owner.email,
-          image: owner.image || null,
-        },
-
+        ownerName: owner.name || owner.name,
+        ownerEmail: req.user.email,
         status: "pending",
-
         createdAt: new Date(),
         updatedAt: new Date(),
       };
 
-      // 9. Save equipment in MongoDB
-      const result = await equipmentCollection.insertOne(equipment);
+      // Insert equipment into MongoDB
+      const result = await equipmentCollection.insertOne(newEquipment);
 
       return res.status(201).json({
         success: true,
-        message: "Equipment submitted successfully for approval.",
+        message: "Equipment added successfully.",
         equipment: {
-          ...equipment,
           _id: result.insertedId,
+          ...newEquipment,
         },
       });
     } catch (error) {

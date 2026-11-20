@@ -2,11 +2,9 @@ import express from "express";
 import cors from "cors";
 import "dotenv/config";
 import { MongoClient } from "mongodb";
+import ownerEquipmentRoutes from "./routes/ownerEquipmentRoutes.js";
 
-import {
-  verifyToken,
-  verifyAdmin,
-} from "./middleware/auth.js";
+import { verifyToken, verifyAdmin } from "./middleware/auth.js";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -43,6 +41,15 @@ const database = connectedClient.db("rent-zone");
 
 const users = database.collection("user");
 const rents = database.collection("rents");
+const equipment = database.collection("equipment");
+
+app.use(
+  "/api/owner/equipment",
+  ownerEquipmentRoutes({
+    equipmentCollection: equipment,
+    usersCollection: users,
+  }),
+);
 
 // ==========================================
 // PUBLIC API
@@ -69,34 +76,29 @@ app.get("/api/me", verifyToken, (req, res) => {
 // ==========================================
 
 // Get all registered users
-app.get(
-  "/users",
-  verifyToken,
-  verifyAdmin,
-  async (req, res, next) => {
-    try {
-      const result = await users
-        .find(
-          {},
-          {
-            projection: {
-              name: 1,
-              email: 1,
-              role: 1,
-              image: 1,
-              createdAt: 1,
-            },
+app.get("/users", verifyToken, verifyAdmin, async (req, res, next) => {
+  try {
+    const result = await users
+      .find(
+        {},
+        {
+          projection: {
+            name: 1,
+            email: 1,
+            role: 1,
+            image: 1,
+            createdAt: 1,
           },
-        )
-        .sort({ createdAt: -1 })
-        .toArray();
+        },
+      )
+      .sort({ createdAt: -1 })
+      .toArray();
 
-      res.status(200).json(result);
-    } catch (error) {
-      next(error);
-    }
-  },
-);
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+});
 
 // ==========================================
 // GLOBAL ERROR HANDLER
@@ -122,4 +124,3 @@ app.use((error, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`RentZone app listening on port ${PORT}`);
 });
-

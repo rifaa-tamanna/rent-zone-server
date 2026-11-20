@@ -8,6 +8,25 @@ export default function ownerEquipmentRoutes({
   equipmentCollection,
   usersCollection,
 }) {
+  // GET: Logged-in owner's equipment
+  router.get("/", verifyToken, verifyOwner, async (req, res, next) => {
+    try {
+      // Get only the equipment of the logged-in owner
+      const equipment = await equipmentCollection
+        .find({ ownerId: req.user.id })
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      return res.status(200).json({
+        success: true,
+        message: "Owner equipment fetched successfully.",
+        equipment,
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post("/", verifyToken, verifyOwner, async (req, res, next) => {
     try {
       const {

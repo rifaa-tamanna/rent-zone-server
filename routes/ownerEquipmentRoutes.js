@@ -8,7 +8,6 @@ export default function ownerEquipmentRoutes({
   equipmentCollection,
   usersCollection,
 }) {
-  // Add new equipment
   router.post("/", verifyToken, verifyOwner, async (req, res, next) => {
     try {
       const {
@@ -23,19 +22,19 @@ export default function ownerEquipmentRoutes({
         brand,
         model,
         image,
+        images = [],
         rentalTerms,
       } = req.body;
 
-      // 1. Check required information
+      // 1. Validate required information
       if (
-        !name ||
-        !description ||
-        !category ||
-        !location ||
-        !condition ||
-        !brand ||
-        !model ||
-        !image
+        !name?.trim() ||
+        !description?.trim() ||
+        !category?.trim() ||
+        !location?.trim() ||
+        !condition?.trim() ||
+        !brand?.trim() ||
+        !model?.trim()
       ) {
         return res.status(400).json({
           success: false,
@@ -43,13 +42,14 @@ export default function ownerEquipmentRoutes({
         });
       }
 
-      // 2. Check rental types
+      // 2. Validate rental types
       const allowedTypes = ["daily", "weekly", "monthly"];
 
       if (
         !Array.isArray(rentalTypes) ||
         rentalTypes.length === 0 ||
-        !rentalTypes.every((type) => allowedTypes.includes(type))
+        !rentalTypes.every((type) => allowedTypes.includes(type)) ||
+        new Set(rentalTypes).size !== rentalTypes.length
       ) {
         return res.status(400).json({
           success: false,
@@ -57,7 +57,7 @@ export default function ownerEquipmentRoutes({
         });
       }
 
-      // 3. Check rental prices
+      // 3. Validate rental prices
       if (!rentalPrice || typeof rentalPrice !== "object") {
         return res.status(400).json({
           success: false,
@@ -65,18 +65,26 @@ export default function ownerEquipmentRoutes({
         });
       }
 
-      for (const type of rentalTypes) {
-        const price = Number(rentalPrice[type]);
+      const validatedPrices = {};
 
-        if (!Number.isFinite(price) || price <= 0) {
-          return res.status(400).json({
-            success: false,
-            message: `Please provide a valid ${type} rental price.`,
-          });
+      for (const type of allowedTypes) {
+        if (rentalTypes.includes(type)) {
+          const price = Number(rentalPrice[type]);
+
+          if (!Number.isFinite(price) || price <= 0) {
+            return res.status(400).json({
+              success: false,
+              message: `Please provide a valid ${type} rental price.`,
+            });
+          }
+
+          validatedPrices[type] = price;
+        } else {
+          validatedPrices[type] = null;
         }
       }
 
-      // 4. Check available quantity
+      // 4. Validate quantity
       const quantity = Number(availableQuantity);
 
       if (!Number.isInteger(quantity) || quantity < 1) {
@@ -86,26 +94,45 @@ export default function ownerEquipmentRoutes({
         });
       }
 
-      // 5. Validate image URL
-      let imageUrl;
+      // 5. Validate image URLs
+      const imageList = [
+        ...(Array.isArray(images) ? images : []),
+        ...(image ? [image] : []),
+      ];
 
-      try {
-        imageUrl = new URL(image);
-      } catch {
+      const uniqueImages = [
+        ...new Set(
+          imageList
+            .filter((url) => typeof url === "string")
+            .map((url) => url.trim())
+            .filter(Boolean),
+        ),
+      ];
+
+      if (uniqueImages.length === 0) {
         return res.status(400).json({
           success: false,
-          message: "Please provide a valid equipment image URL.",
+          message: "Please provide at least one equipment image.",
         });
       }
 
-      if (!["http:", "https:"].includes(imageUrl.protocol)) {
+      const isValidImageUrl = (url) => {
+        try {
+          const parsedUrl = new URL(url);
+          return ["http:", "https:"].includes(parsedUrl.protocol);
+        } catch {
+          return false;
+        }
+      };
+
+      if (!uniqueImages.every(isValidImageUrl)) {
         return res.status(400).json({
           success: false,
-          message: "Invalid image URL.",
+          message: "Please provide valid equipment image URLs.",
         });
       }
 
-      // 6. Get logged-in owner from MongoDB
+      // 6. Get logged-in owner
       const owner = await usersCollection.findOne({
         email: req.user.email,
       });
@@ -117,40 +144,32 @@ export default function ownerEquipmentRoutes({
         });
       }
 
-      // 7. Prepare equipment document
+      // 7. Prepare rental terms
+      const terms = Array.isArray(rentalTerms)
+        ? rentalTerms
+        : String(rentalTerms || "").split("\n");
+
+      // 8. Prepare equipment document
       const equipment = {
         name: name.trim(),
         description: description.trim(),
         category: category.trim(),
         location: location.trim(),
 
-        rentalPrice: {
-          daily: rentalTypes.includes("daily")
-            ? Number(rentalPrice.daily)
-            : null,
-          weekly: rentalTypes.includes("weekly")
-            ? Number(rentalPrice.weekly)
-            : null,
-          monthly: rentalTypes.includes("monthly")
-            ? Number(rentalPrice.monthly)
-            : null,
-        },
-
+        rentalPrice: validatedPrices,
         rentalTypes,
+
         availableQuantity: quantity,
         condition: condition.trim(),
         brand: brand.trim(),
         model: model.trim(),
-        image: image.trim(),
 
-        rentalTerms: Array.isArray(rentalTerms)
-          ? rentalTerms.map((term) => String(term).trim()).filter(Boolean)
-          : String(rentalTerms || "")
-              .split("\n")
-              .map((term) => term.trim())
-              .filter(Boolean),
+        // First image remains the primary image.
+        image: uniqueImages[0],
+        images: uniqueImages,
 
-        // Owner information comes from the authenticated account.
+        rentalTerms: terms.map((term) => String(term).trim()).filter(Boolean),
+
         ownerId: req.user.id,
 
         owner: {
@@ -160,14 +179,13 @@ export default function ownerEquipmentRoutes({
           image: owner.image || null,
         },
 
-        // Every new equipment starts as pending.
         status: "pending",
 
         createdAt: new Date(),
         updatedAt: new Date(),
       };
 
-      // 8. Save equipment in MongoDB
+      // 9. Save equipment in MongoDB
       const result = await equipmentCollection.insertOne(equipment);
 
       return res.status(201).json({

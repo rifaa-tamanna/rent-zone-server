@@ -3,6 +3,7 @@ import cors from "cors";
 import "dotenv/config";
 import { MongoClient } from "mongodb";
 import ownerEquipmentRoutes from "./routes/ownerEquipmentRoutes.js";
+import ownerImageRoutes from "./routes/ownerImageRoutes.js";
 
 import { verifyToken, verifyAdmin } from "./middleware/auth.js";
 
@@ -43,6 +44,7 @@ const users = database.collection("user");
 const rents = database.collection("rents");
 const equipment = database.collection("equipment");
 
+app.use("/api/owner/images", ownerImageRoutes);
 app.use(
   "/api/owner/equipment",
   ownerEquipmentRoutes({

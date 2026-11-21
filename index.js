@@ -134,7 +134,7 @@ app.use(
 // ==========================================
 
 app.get("/", (req, res) => {
-  res.send("RentZone website is running fine!");
+  res.send("{RentZone website is running fine!}");
 });
 
 // ==========================================

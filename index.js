@@ -173,3 +173,5 @@ app.use((error, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`RentZone app listening on port ${PORT}`);
 });
+
+export default app;

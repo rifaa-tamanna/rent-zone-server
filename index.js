@@ -78,11 +78,12 @@ const bookings = database.collection("bookings");
 const payments = database.collection("payments");
 const favorites = database.collection("favorites");
 
-// Public Equipment Routes (Search, Filter, Sort, Featured)
+// Public Equipment Routes (Search, Filter, Sort, Featured, Trusted Owners)
 app.use(
   "/api/equipment",
   publicEquipmentRoutes({
     equipmentCollection: equipment,
+    usersCollection: users,
   }),
 );
 

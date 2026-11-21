@@ -19,7 +19,34 @@ const PORT = process.env.PORT || 5000;
 // ==========================================
 
 app.use(express.json());
-app.use(cors());
+
+const allowedOrigins = [
+  "http://localhost:3000",
+  process.env.BETTER_AUTH_BASE_URL,
+  process.env.CLIENT_URL,
+].filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, health checks, or curl)
+      if (!origin) return callback(null, true);
+
+      // Allow Vercel preview and production domains
+      const isVercel = /\.vercel\.app$/.test(origin);
+
+      if (
+        allowedOrigins.includes(origin) ||
+        allowedOrigins.includes("*") ||
+        isVercel
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
+    credentials: true,
+  }),
+);
 
 // ==========================================
 // MONGODB CONNECTION
@@ -120,35 +147,6 @@ app.get("/api/me", verifyToken, (req, res) => {
     success: true,
     user: req.user,
   });
-});
-
-// ==========================================
-// ADMIN ONLY API
-// ==========================================
-
-// Get all registered users
-app.get("/users", verifyToken, verifyAdmin, async (req, res, next) => {
-  try {
-    const result = await users
-      .find(
-        {},
-        {
-          projection: {
-            name: 1,
-            email: 1,
-            role: 1,
-            image: 1,
-            createdAt: 1,
-          },
-        },
-      )
-      .sort({ createdAt: -1 })
-      .toArray();
-
-    res.status(200).json(result);
-  } catch (error) {
-    next(error);
-  }
 });
 
 // ==========================================

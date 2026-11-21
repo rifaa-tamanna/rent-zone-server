@@ -254,5 +254,50 @@ export default function customerRoutes({
     }
   });
 
+  // GET: Customer Dashboard Analytics
+  router.get("/analytics", verifyToken, async (req, res, next) => {
+    try {
+      const [
+        totalBookings,
+        activeRentals,
+        completedRentals,
+        savedFavorites,
+        payments,
+      ] = await Promise.all([
+        bookingsCollection.countDocuments({ customerId: req.user.id }),
+        bookingsCollection.countDocuments({
+          customerId: req.user.id,
+          bookingStatus: { $in: ["confirmed", "active"] },
+        }),
+        bookingsCollection.countDocuments({
+          customerId: req.user.id,
+          bookingStatus: "completed",
+        }),
+        favoritesCollection.countDocuments({ userId: req.user.id }),
+        paymentsCollection
+          .find({ customerId: req.user.id, status: "succeeded" })
+          .toArray(),
+      ]);
+
+      const totalSpent = payments.reduce(
+        (sum, p) => sum + (Number(p.amount) || 0),
+        0,
+      );
+
+      return res.status(200).json({
+        success: true,
+        analytics: {
+          totalBookings,
+          activeRentals,
+          completedRentals,
+          savedFavorites,
+          totalSpent,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   return router;
 }

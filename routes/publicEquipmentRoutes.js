@@ -3,6 +3,10 @@ import { ObjectId } from "mongodb";
 
 const router = express.Router();
 
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export default function publicEquipmentRoutes({ equipmentCollection }) {
   // GET: Fetch 6 approved equipment for Featured Equipment section
   router.get("/featured", async (req, res, next) => {
@@ -40,40 +44,56 @@ export default function publicEquipmentRoutes({ equipmentCollection }) {
       } = req.query;
 
       // Base query: Only approved equipment for public view
-      const query = { status: "approved" };
+      const andConditions = [{ status: "approved" }];
 
       // Search by name, description, brand, or model
       if (search.trim()) {
-        const regex = new RegExp(search.trim(), "i");
-        query.$or = [
-          { name: { $regex: regex } },
-          { description: { $regex: regex } },
-          { brand: { $regex: regex } },
-          { model: { $regex: regex } },
-        ];
+        const safeSearch = escapeRegex(search.trim());
+        andConditions.push({
+          $or: [
+            { name: { $regex: safeSearch, $options: "i" } },
+            { description: { $regex: safeSearch, $options: "i" } },
+            { brand: { $regex: safeSearch, $options: "i" } },
+            { model: { $regex: safeSearch, $options: "i" } },
+          ],
+        });
       }
 
       // Location search/filter
       if (location.trim()) {
-        query.location = { $regex: new RegExp(location.trim(), "i") };
+        andConditions.push({
+          location: { $regex: escapeRegex(location.trim()), $options: "i" },
+        });
       }
 
       // Category filter
       if (category.trim() && category.toLowerCase() !== "all") {
-        query.category = { $regex: new RegExp(`^${category.trim()}$`, "i") };
+        andConditions.push({
+          category: {
+            $regex: `^${escapeRegex(category.trim())}$`,
+            $options: "i",
+          },
+        });
       }
 
       // Rental type filter (e.g. daily, weekly, monthly)
       if (rentalType.trim() && rentalType.toLowerCase() !== "all") {
-        query.rentalTypes = rentalType.trim().toLowerCase();
+        andConditions.push({
+          rentalTypes: rentalType.trim().toLowerCase(),
+        });
       }
 
       // Condition filter
       if (condition.trim() && condition.toLowerCase() !== "all") {
-        query.condition = { $regex: new RegExp(`^${condition.trim()}$`, "i") };
+        andConditions.push({
+          condition: {
+            $regex: `^${escapeRegex(condition.trim())}$`,
+            $options: "i",
+          },
+        });
       }
 
-      // Price range filtering (based on daily rental price or active rental price)
+      // Price range filtering (based on daily, weekly, or monthly rental price)
       const parsedMinPrice = Number(minPrice);
       const parsedMaxPrice = Number(maxPrice);
 
@@ -86,13 +106,16 @@ export default function publicEquipmentRoutes({ equipmentCollection }) {
           priceQuery.$lte = parsedMaxPrice;
         }
 
-        // Check across daily, weekly, or monthly price fields
-        query.$or = [
-          { "rentalPrice.daily": priceQuery },
-          { "rentalPrice.weekly": priceQuery },
-          { "rentalPrice.monthly": priceQuery },
-        ];
+        andConditions.push({
+          $or: [
+            { "rentalPrice.daily": priceQuery },
+            { "rentalPrice.weekly": priceQuery },
+            { "rentalPrice.monthly": priceQuery },
+          ],
+        });
       }
+
+      const query = andConditions.length > 1 ? { $and: andConditions } : andConditions[0];
 
       // Sorting
       let sortOptions = { createdAt: -1 }; // default newest

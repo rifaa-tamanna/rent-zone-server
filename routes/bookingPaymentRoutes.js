@@ -136,13 +136,20 @@ export default function bookingPaymentRoutes({
         createdAt: new Date(),
       };
 
-      await paymentsCollection.insertOne(newPayment);
-
-      // Decrement equipment quantity
-      await equipmentCollection.updateOne(
-        { _id: new ObjectId(equipmentId) },
-        { $inc: { availableQuantity: -qty } },
+      // Atomically decrement equipment quantity only if enough stock remains
+      const stockUpdateResult = await equipmentCollection.updateOne(
+        { _id: new ObjectId(equipmentId), availableQuantity: { $gte: qty } },
+        { $inc: { availableQuantity: -qty }, $set: { updatedAt: new Date() } },
       );
+
+      if (stockUpdateResult.modifiedCount === 0) {
+        return res.status(409).json({
+          success: false,
+          message: "Stock unavailable. Another customer reserved this item just now.",
+        });
+      }
+
+      await paymentsCollection.insertOne(newPayment);
 
       return res.status(201).json({
         success: true,

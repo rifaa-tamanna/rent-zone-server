@@ -1,46 +1,149 @@
-# ⚙️ RentZone Server — Backend API
+# RentZone Backend Server
 
-> **Platform:** Express.js, Node.js (ES Modules), MongoDB Native Driver, Jose JWT
+The RentZone Backend Server is a RESTful API built with Node.js and Express.js. It handles authentication verification, equipment management, image uploads, and database operations for the RentZone equipment rental platform.
 
----
+## Live API
 
-## 📌 Purpose
-The **RentZone Server** powers the RESTful API for the Equipment Rental Platform. It provides secure JWT token verification, role-based authorization middlewares, dynamic search & filtering, booking management, Stripe payment processing, and platform analytics.
+**Backend URL:** https://rent-zone-server.vercel.app/
 
-### 🌟 Key Features
-* **Role-Based Middlewares (Challenge 2):** `verifyToken`, `verifyRenter`, `verifyOwner`, and `verifyAdmin` enforcing granular authorization.
-* **Server-Side Catalog Query (Challenge 1):** Regex-powered search, category/rental-type filtering, price range limits, and dynamic pagination.
-* **ImgBB Multi-Image Upload:** Server-side handling of multipart file buffers via Multer and automated dispatch to ImgBB API.
-* **Booking & Payments Collection:** Accurate duration calculation, inventory decrement, and transaction logs.
-* **Dynamic Analytics Engine (Challenge 3):** Real-time aggregation of users, listings, bookings, and revenue for admin and owners.
+## Technologies Used
 
----
+- Node.js
+- Express.js
+- MongoDB
+- Better Auth JWT
+- JOSE
+- Multer
+- ImgBB API
+- CORS
+- dotenv
 
-## 🛠️ Dependencies & NPM Packages
-* **Core:** `express`, `cors`, `dotenv`
-* **Database:** `mongodb` (Native Node Driver)
-* **Authentication & Crypto:** `jose` (JWT verification & Remote JWKS)
-* **File Uploads:** `multer`
+## Key Features
 
----
+- RESTful API architecture
+- MongoDB database integration
+- JWT-based authentication verification
+- Role-based authorization
+- Protected API routes
+- Owner-specific equipment management
+- Create, read, update, and delete equipment listings
+- Equipment image uploads using ImgBB
+- Input validation and error handling
+- Secure access control for protected endpoints
 
-## 🔑 Environment Variables
-Create a `.env` file inside `rent-zone-server/`:
+## API Modules
+
+### Authentication
+- Verify Better Auth JWT tokens
+- Identify authenticated users
+- Validate user roles
+- Protect private API endpoints
+
+### Equipment Management
+- Retrieve equipment listings
+- Retrieve featured equipment
+- Add new equipment
+- Update equipment information
+- Delete equipment listings
+- Retrieve equipment by owner
+
+### Image Upload
+- Upload equipment images to ImgBB
+- Support multiple image uploads
+- Validate image upload requests
+- Return uploaded image URLs
+
+## Database
+
+**Database:** MongoDB
+
+Main collections:
+
+- `user` – Stores user information.
+- `equipment` – Stores equipment listing information.
+- `rents` – Stores rental-related information.
+
+## Installation and Setup
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/rifaa-tamanna/rent-zone-server
+```
+
+### 2. Navigate to the Project
+
+```bash
+cd rent-zone-server
+```
+
+### 3. Install Dependencies
+
+```bash
+npm install
+```
+
+### 4. Configure Environment Variables
+
+Create a `.env` file in the project root:
+
 ```env
 PORT=5000
 MONGODB_URI=your_mongodb_connection_string
 BETTER_AUTH_BASE_URL=http://localhost:3000
-IMGBB_API_KEY=your_imgbb_api_key
+IMGBB_API_KEY=
 ```
+
+Never share or commit your actual environment variables or secret keys.
+
+### 5. Run the Development Server
+
+```bash
+npm run dev
+```
+
+The server will run at:
+
+```text
+http://localhost:5000
+```
+
+## Project Structure
+
+```text
+rent-zone-server/
+├── middleware/
+│   └── auth.js
+├── routes/
+│   ├── ownerEquipmentRoutes.js
+│   └── ownerImageRoutes.js
+├── index.js
+├── package.json
+├── package-lock.json
+└── .env
+```
+
+## Authentication & Security
+
+- Better Auth JWT verification using JOSE
+- Public and protected API routes
+- Owner and admin role verification
+- Authorization checks for owner-specific resources
+- Secure image upload endpoints
+- Environment-based configuration
+
+## Frontend Integration
+
+The backend API is connected to the RentZone frontend built with Next.js.
+
+**Frontend:** https://rentt-zone.vercel.app/
+
+**Backend:** https://rent-zone-server.vercel.app/
+
+## Author
+
+**rifaa-tamanna**
 
 ---
 
-## 🚀 Getting Started
-```bash
-# Install dependencies
-npm install
-
-# Run the server
-node index.js
-```
-The server will start listening on [http://localhost:5000](http://localhost:5000).
+*RentZone – Making Equipment Rental Simple and Accessible.*

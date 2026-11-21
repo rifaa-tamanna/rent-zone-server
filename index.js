@@ -4,6 +4,10 @@ import "dotenv/config";
 import { MongoClient } from "mongodb";
 import ownerEquipmentRoutes from "./routes/ownerEquipmentRoutes.js";
 import ownerImageRoutes from "./routes/ownerImageRoutes.js";
+import publicEquipmentRoutes from "./routes/publicEquipmentRoutes.js";
+import customerRoutes from "./routes/customerRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
+import bookingPaymentRoutes from "./routes/bookingPaymentRoutes.js";
 
 import { verifyToken, verifyAdmin } from "./middleware/auth.js";
 
@@ -43,13 +47,58 @@ const database = connectedClient.db("rent-zone");
 const users = database.collection("user");
 const rents = database.collection("rents");
 const equipment = database.collection("equipment");
+const bookings = database.collection("bookings");
+const payments = database.collection("payments");
+const favorites = database.collection("favorites");
 
+// Public Equipment Routes (Search, Filter, Sort, Featured)
+app.use(
+  "/api/equipment",
+  publicEquipmentRoutes({
+    equipmentCollection: equipment,
+  }),
+);
+
+// Owner Routes
 app.use("/api/owner/images", ownerImageRoutes);
 app.use(
   "/api/owner/equipment",
   ownerEquipmentRoutes({
     equipmentCollection: equipment,
     usersCollection: users,
+  }),
+);
+
+// Customer Routes (Favorites, Rentals, Profile)
+app.use(
+  "/api/customer",
+  customerRoutes({
+    favoritesCollection: favorites,
+    equipmentCollection: equipment,
+    bookingsCollection: bookings,
+    usersCollection: users,
+  }),
+);
+
+// Booking & Payment Routes
+app.use(
+  "/api/bookings",
+  bookingPaymentRoutes({
+    bookingsCollection: bookings,
+    paymentsCollection: payments,
+    equipmentCollection: equipment,
+    usersCollection: users,
+  }),
+);
+
+// Admin Routes (Users, Equipment Moderation, Platform Analytics)
+app.use(
+  "/api/admin",
+  adminRoutes({
+    usersCollection: users,
+    equipmentCollection: equipment,
+    bookingsCollection: bookings,
+    paymentsCollection: payments,
   }),
 );
 

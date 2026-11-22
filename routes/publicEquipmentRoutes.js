@@ -1,3 +1,4 @@
+
 import express from "express";
 import { ObjectId } from "mongodb";
 
@@ -250,6 +251,7 @@ export default function publicEquipmentRoutes({ equipmentCollection, usersCollec
       next(error);
     }
   });
+
 
   return router;
 }

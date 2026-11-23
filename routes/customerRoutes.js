@@ -1,8 +1,23 @@
 import express from "express";
 import { ObjectId } from "mongodb";
 import { verifyToken, verifyRenter } from "../middleware/auth.js";
+import multer from "multer";
 
 const router = express.Router();
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only image files are allowed."));
+    }
+  },
+});
 
 export default function customerRoutes({
   favoritesCollection,
@@ -253,6 +268,88 @@ export default function customerRoutes({
       next(error);
     }
   });
+
+  // POST: Upload Profile Image
+  router.post(
+    "/profile/image",
+    verifyToken,
+    upload.single("image"),
+    async (req, res, next) => {
+      try {
+        // Check uploaded file
+        if (!req.file) {
+          return res.status(400).json({
+            success: false,
+            message: "Please select an image.",
+          });
+        }
+
+        // Check ImgBB API key
+        const apiKey = process.env.IMGBB_API_KEY;
+
+        if (!apiKey) {
+          return res.status(500).json({
+            success: false,
+            message: "Image upload service is not configured.",
+          });
+        }
+
+        // Convert image to Base64
+        const formData = new URLSearchParams();
+
+        formData.append("key", apiKey);
+        formData.append("image", req.file.buffer.toString("base64"));
+
+        // Upload to ImgBB
+        const response = await fetch(
+          "https://api.imgbb.com/1/upload",
+          {
+            method: "POST",
+            body: formData,
+          },
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          console.error("ImgBB upload failed:", result);
+
+          return res.status(502).json({
+            success: false,
+            message: "Failed to upload image to ImgBB.",
+          });
+        }
+
+        const imageUrl = result.data.display_url || result.data.url;
+
+        // Update MongoDB user profile
+        const updateResult = await usersCollection.updateOne(
+          { email: req.user.email },
+          {
+            $set: {
+              image: imageUrl,
+              updatedAt: new Date(),
+            },
+          },
+        );
+
+        if (updateResult.matchedCount === 0) {
+          return res.status(404).json({
+            success: false,
+            message: "User profile not found.",
+          });
+        }
+
+        return res.status(200).json({
+          success: true,
+          message: "Profile photo updated successfully.",
+          image: imageUrl,
+        });
+      } catch (error) {
+        next(error);
+      }
+    },
+  );
 
   // GET: Customer Dashboard Analytics
   router.get("/analytics", verifyToken, async (req, res, next) => {
